@@ -1,0 +1,101 @@
+{
+  "realm": "novatech",
+  "enabled": true,
+  "sslRequired": "none",
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 900,
+  "ssoSessionMaxLifespan": 28800,
+  "roles": {
+    "realm": [
+      { "name": "hr", "description": "HR staff" },
+      { "name": "finance", "description": "Finance staff" },
+      { "name": "dev", "description": "Developers" },
+      { "name": "admin", "description": "IT administrators" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "hr-app",
+      "secret": "hr-lab-secret",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:4181/oauth2/callback"],
+      "webOrigins": ["+"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "protocolMappers": [
+        {
+          "name": "hr-app-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "hr-app",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "finance-app",
+      "secret": "finance-lab-secret",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:4182/oauth2/callback"],
+      "webOrigins": ["+"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "protocolMappers": [
+        {
+          "name": "finance-app-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "finance-app",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "priya",
+      "email": "priya@novatech.test",
+      "emailVerified": true,
+      "firstName": "Priya",
+      "lastName": "HR",
+      "enabled": true,
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "credentials": [{ "type": "password", "value": "Passw0rd!", "temporary": false }],
+      "realmRoles": ["hr"]
+    },
+    {
+      "username": "rahul",
+      "email": "rahul@novatech.test",
+      "emailVerified": true,
+      "firstName": "Rahul",
+      "lastName": "Finance",
+      "enabled": true,
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "credentials": [{ "type": "password", "value": "Passw0rd!", "temporary": false }],
+      "realmRoles": ["finance"]
+    },
+    {
+      "username": "imran",
+      "email": "imran@novatech.test",
+      "emailVerified": true,
+      "firstName": "Imran",
+      "lastName": "Admin",
+      "enabled": true,
+      "requiredActions": ["CONFIGURE_TOTP"],
+      "credentials": [{ "type": "password", "value": "Passw0rd!", "temporary": false }],
+      "realmRoles": ["admin", "hr", "finance"]
+    }
+  ]
+}

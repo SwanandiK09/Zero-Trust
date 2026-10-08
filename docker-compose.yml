@@ -1,0 +1,107 @@
+# NovaTech Zero Trust Lab - Phase 1
+# Identity (Keycloak) + identity-aware proxies + two isolated apps.
+# NOTE: secrets below are LAB-ONLY. Never reuse them anywhere real.
+
+x-proxy-common: &proxy-common
+  image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+  restart: unless-stopped
+  depends_on:
+    - keycloak
+
+networks:
+  idp-net:            # identity zone: Keycloak + proxies
+  hr-net:             # HR zone: no internet, only reachable via the HR proxy
+    internal: true
+  finance-net:        # Finance zone: no internet, only reachable via the Finance proxy
+    internal: true
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    volumes:
+      - ./keycloak/novatech-realm.json:/opt/keycloak/data/import/novatech-realm.json:ro
+    ports:
+      - "8080:8080"
+    networks:
+      idp-net:
+        aliases:
+          - keycloak
+
+  # ---------- HR zone ----------
+  hr-app:
+    build: ./apps
+    environment:
+      APP_NAME: "HR Portal (salary data)"
+    networks:
+      - hr-net
+
+  hr-proxy:
+    <<: *proxy-common
+    command:
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=http://keycloak:8080/realms/novatech
+      - --client-id=hr-app
+      - --client-secret=hr-lab-secret
+      - --redirect-url=http://localhost:4181/oauth2/callback
+      - --upstream=http://hr-app:8000
+      - --http-address=0.0.0.0:4180
+      - --allowed-role=hr
+      - --code-challenge-method=S256
+      - --email-domain=*
+      - --cookie-secret=0123456789abcdef0123456789abcdef
+      - --cookie-secure=false
+      - --cookie-name=_hr_session
+      - --skip-provider-button=true
+      - --pass-user-headers=true
+      - --set-xauthrequest=true
+    ports:
+      - "4181:4180"
+    networks:
+      - idp-net
+      - hr-net
+
+  # ---------- Finance zone ----------
+  finance-app:
+    build: ./apps
+    environment:
+      APP_NAME: "Finance App (payments)"
+    networks:
+      - finance-net
+
+  finance-proxy:
+    <<: *proxy-common
+    command:
+      - --provider=keycloak-oidc
+      - --oidc-issuer-url=http://keycloak:8080/realms/novatech
+      - --client-id=finance-app
+      - --client-secret=finance-lab-secret
+      - --redirect-url=http://localhost:4182/oauth2/callback
+      - --upstream=http://finance-app:8000
+      - --http-address=0.0.0.0:4180
+      - --allowed-role=finance
+      - --code-challenge-method=S256
+      - --email-domain=*
+      - --cookie-secret=fedcba9876543210fedcba9876543210
+      - --cookie-secure=false
+      - --cookie-name=_finance_session
+      - --skip-provider-button=true
+      - --pass-user-headers=true
+      - --set-xauthrequest=true
+    ports:
+      - "4182:4180"
+    networks:
+      - idp-net
+      - finance-net
+
+  attacker:
+    build: ./attacker
+    profiles: ["attack"]
+    depends_on:
+      - hr-proxy
+      - finance-proxy
+    networks:
+      - idp-net
