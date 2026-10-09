@@ -1,5 +1,5 @@
-# NovaTech Zero Trust Lab - Phase 1
-# Identity (Keycloak) + identity-aware proxies + two isolated apps.
+# NovaTech Zero Trust Lab - Phase 3
+# Identity, OPA policy decisions, risk scoring, and two isolated apps.
 # NOTE: secrets below are LAB-ONLY. Never reuse them anywhere real.
 
 x-proxy-common: &proxy-common
@@ -31,11 +31,41 @@ services:
         aliases:
           - keycloak
 
+  # ---------- Policy decision point ----------
+  # OPA is reachable only by the two protected apps; it is not published to the host.
+  opa:
+    image: openpolicyagent/opa:1.21.1
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policy"]
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./opa/policy:/policy:ro
+    networks:
+      - hr-net
+      - finance-net
+
+  # Small in-memory risk score service for the local demo.
+  # It is reachable only by the protected apps on their internal networks.
+  risk-engine:
+    build: ./risk-engine
+    restart: unless-stopped
+    networks:
+      - hr-net
+      - finance-net
+
   # ---------- HR zone ----------
   hr-app:
     build: ./apps
     environment:
       APP_NAME: "HR Portal (salary data)"
+      APP_RESOURCE: hr
+      OPA_URL: http://opa:8181/v1/data/zerogate/authz/allow
+      RISK_URL: http://risk-engine:8090
+    depends_on:
+      - opa
+      - risk-engine
     networks:
       - hr-net
 
@@ -49,7 +79,7 @@ services:
       - --redirect-url=http://localhost:4181/oauth2/callback
       - --upstream=http://hr-app:8000
       - --http-address=0.0.0.0:4180
-      - --allowed-role=hr
+      - --oidc-groups-claim=roles
       - --code-challenge-method=S256
       - --email-domain=*
       - --cookie-secret=0123456789abcdef0123456789abcdef
@@ -69,6 +99,12 @@ services:
     build: ./apps
     environment:
       APP_NAME: "Finance App (payments)"
+      APP_RESOURCE: finance
+      OPA_URL: http://opa:8181/v1/data/zerogate/authz/allow
+      RISK_URL: http://risk-engine:8090
+    depends_on:
+      - opa
+      - risk-engine
     networks:
       - finance-net
 
@@ -82,7 +118,7 @@ services:
       - --redirect-url=http://localhost:4182/oauth2/callback
       - --upstream=http://finance-app:8000
       - --http-address=0.0.0.0:4180
-      - --allowed-role=finance
+      - --oidc-groups-claim=roles
       - --code-challenge-method=S256
       - --email-domain=*
       - --cookie-secret=fedcba9876543210fedcba9876543210
@@ -97,6 +133,10 @@ services:
       - idp-net
       - finance-net
 
+  # ---------- Attacker (lab-only demo) ----------
+  # Plays an outsider with no valid session who has reached the idp-net zone.
+  # Not started by `docker compose up`; run on demand with:
+  #   docker compose --profile attack run --rm attacker
   attacker:
     build: ./attacker
     profiles: ["attack"]

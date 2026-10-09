@@ -1,3 +1,15 @@
+"""
+Lab-only demo: plays an outsider with NO valid session, sitting on the
+idp-net network, trying to reach company resources directly.
+
+This proves two zero-trust properties:
+  1. An unauthenticated caller hitting a guarded app is redirected to login,
+     never shown the app's content.
+  2. An app on an isolated network (hr-net/finance-net) cannot be reached
+     at all from outside its own zone - there is no route.
+
+Run only inside this lab (see README): `docker compose --profile attack run attacker`
+"""
 import socket
 import urllib.error
 import urllib.request
@@ -7,6 +19,9 @@ TARGETS = {
     "Finance guard (finance-proxy, reachable from idp-net)": "http://finance-proxy:4180/",
 }
 
+# These hostnames don't resolve for the attacker at all, because it is not
+# placed on hr-net / finance-net - there is no network path, not even a
+# refused connection.
 UNREACHABLE = ["hr-app", "finance-app"]
 
 
