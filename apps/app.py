@@ -54,11 +54,36 @@ def policy_allows(user, roles, action, score):
             "trust_score": score,
         }
     })
-    return result.get("result") is True
+    allowed = result.get("result") is True
+    if allowed:
+        reason = "Required role, action, and risk score passed"
+    elif score < 60:
+        reason = "Risk score is below the required 60"
+    elif APP_RESOURCE in {"hr", "finance"} and APP_RESOURCE not in roles:
+        reason = f"Required {APP_RESOURCE} role is missing"
+    else:
+        reason = "Action is not permitted for this resource"
+    api_json(f"{RISK_URL}/audit", {
+        "user": user,
+        "roles": roles,
+        "resource": APP_RESOURCE,
+        "action": action,
+        "trust_score": score,
+        "decision": "allow" if allowed else "deny",
+        "reason": reason,
+    })
+    return allowed
 
 
 def signal_device_unsafe(user):
     return api_json(f"{RISK_URL}/signal", {"user": user, "event": "device_unsafe"})
+
+
+def audit_events(user, limit=8):
+    query = urlencode({"user": user, "limit": limit})
+    result = api_json(f"{RISK_URL}/audit?{query}")
+    events = result.get("events", [])
+    return events if isinstance(events, list) else []
 
 
 def money(value):
@@ -72,6 +97,7 @@ CSS = """
 .main{padding:28px clamp(20px,4vw,56px) 56px;max-width:1420px;width:100%;margin:auto}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:34px}.crumb{font-size:12px;color:var(--muted)}.profile{display:flex;align-items:center;gap:10px}.avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:#dcece4;color:#176548;font-weight:700}.profile small{display:block;color:var(--muted);font-size:12px}.secure{background:var(--mint);color:#176548;border-radius:99px;padding:8px 12px;font-size:12px;font-weight:700}.hello{display:flex;align-items:end;justify-content:space-between;margin-bottom:24px}.hello h1{font-size:28px;letter-spacing:-.03em;margin:3px 0}.hello p{margin:0;color:var(--muted)}.date{font-size:12px;color:var(--muted)}
 .grid{display:grid;gap:16px}.stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:18px}.card{background:white;border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 4px 14px #1e39270a}.stat-label{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}.stat-value{font-size:27px;font-weight:750;letter-spacing:-.04em;margin:11px 0 4px}.trend{font-size:12px;color:var(--green)}.overview{grid-template-columns:minmax(0,1.55fr) minmax(300px,.85fr);align-items:start}.section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}.section-head h2{font-size:16px;margin:0}.section-head a{color:var(--green);font-size:12px;text-decoration:none}.security{background:#fbfdfb}.score-row{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px}.score{font-size:25px;font-weight:750}.status{font-size:11px;background:var(--mint);color:var(--green);padding:5px 9px;border-radius:99px;font-weight:700}.status.flagged{background:#fdecea;color:var(--red)}.bar{height:8px;border-radius:20px;background:#e8efeb;overflow:hidden}.bar span{display:block;height:100%;border-radius:20px;background:#36a678}.device{color:var(--muted);font-size:12px;margin:13px 0}.event{border-top:1px solid var(--line);padding-top:12px;margin-top:13px;color:var(--muted);font-size:12px}.event strong{color:var(--ink)}
 .btn{border:0;border-radius:10px;padding:11px 15px;background:var(--green);color:white;font-weight:700;cursor:pointer}.btn:hover{background:#11674b}.btn-outline{background:white;color:var(--ink);border:1px solid var(--line)}.btn-risk{background:#fff3dc;color:#80520a;border:1px solid #f2dfb9;margin-top:14px;width:100%}.btn-risk:hover{background:#f9e8c5}.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}.field input,.field select{width:100%;height:42px;border:1px solid #dfe7e2;border-radius:9px;padding:0 11px;background:white;color:var(--ink);font:inherit}.field.full{grid-column:1/-1}.transfer-note{font-size:11px;color:var(--muted);margin:10px 0 0}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left}th{font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:#8b9791;padding:10px 8px;border-bottom:1px solid var(--line)}td{padding:13px 8px;border-bottom:1px solid #f0f3f1;font-size:12px}td:last-child,th:last-child{text-align:right}.merchant{font-weight:650;font-size:13px}.sub{font-size:11px;color:var(--muted)}.positive{color:var(--green);font-weight:700}.negative{font-weight:700}.lower{margin-top:18px}.columns{grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr)}.pill{font-size:10px;color:#61736a;background:#f1f5f2;border-radius:99px;padding:5px 8px}
+.decision{font-size:10px;font-weight:750;border-radius:99px;padding:4px 8px;white-space:nowrap}.decision-allow{background:#e9f5ef;color:#176548}.decision-deny{background:#fdecea;color:#a53832}.decision-signal{background:#fff3dc;color:#80520a}.audit-reason{display:block;color:var(--muted);font-size:10px;margin-top:3px}
 .banner{max-width:760px;margin:10vh auto;background:white;border:1px solid var(--line);border-radius:20px;padding:36px;box-shadow:0 16px 50px #1e392710}.banner h1{margin:0 0 10px}.banner p{color:var(--muted)}.banner-deny{border-top:4px solid var(--red)}.banner-success{border-top:4px solid var(--green)}.metric{font-size:28px;font-weight:800}.alert{background:var(--amber);border:1px solid #f2dfb9;border-radius:12px;padding:14px;margin:18px 0;color:#6c4a14}.footer{text-align:center;font-size:10px;color:#97a29c;padding:24px}
 @media(max-width:900px){.shell{grid-template-columns:1fr}.side{padding:14px 18px;gap:10px}.nav{display:flex;overflow:auto}.side-label,.side-note{display:none}.nav a{white-space:nowrap}.overview,.columns{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
 @media(max-width:560px){.stats{grid-template-columns:1fr}.hello{display:block}.date{margin-top:10px}.main{padding:18px}.top{margin-bottom:24px}.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}}
@@ -117,6 +143,37 @@ def render_rows():
     return "".join(rendered)
 
 
+def render_audit(events):
+    if not events:
+        return "<tr><td colspan='5'>No policy decisions recorded yet.</td></tr>"
+    rows = []
+    for event in events:
+        decision = str(event.get("decision", "unknown"))
+        safe_decision = decision if decision in {"allow", "deny", "signal"} else "deny"
+        rows.append(
+            "<tr>"
+            f"<td>{escape(str(event.get('timestamp', '')))}</td>"
+            f"<td><strong>{escape(str(event.get('action', '')))}</strong>"
+            f"<span class='audit-reason'>{escape(str(event.get('reason', '')))}</span></td>"
+            f"<td>{escape(str(event.get('resource', '')))}</td>"
+            f"<td>{escape(str(event.get('trust_score', '')))} / 100</td>"
+            f"<td><span class='decision decision-{safe_decision}'>{escape(decision.upper())}</span></td>"
+            "</tr>"
+        )
+    return "".join(rows)
+
+
+def audit_card(events):
+    return (
+        "<section class='card lower' id='security-log'><div class='section-head'>"
+        "<h2>Recent access decisions</h2><span class='pill'>AUDIT TRAIL</span></div>"
+        "<div class='table-wrap'><table><thead><tr><th>TIME (UTC)</th><th>ACTION / REASON</th>"
+        "<th>RESOURCE</th><th>RISK SCORE</th><th>DECISION</th></tr></thead>"
+        f"<tbody>{render_audit(events)}</tbody></table></div>"
+        "<p class='transfer-note'>Showing your latest policy decisions and simulated device signals.</p></section>"
+    )
+
+
 def security_card(user, state, show_simulation=False):
     score = state["score"]
     compliant = state.get("device_compliant", True)
@@ -140,7 +197,7 @@ def security_card(user, state, show_simulation=False):
     )
 
 
-def finance_dashboard(user, email, roles, state):
+def finance_dashboard(user, email, roles, state, events):
     with ledger_lock:
         current_balance = balance
     initials = escape((user[:1] or "U").upper())
@@ -168,12 +225,13 @@ def finance_dashboard(user, email, roles, state):
         "<div class='table-wrap'><table><thead><tr><th>DESCRIPTION</th><th>DATE</th><th>STATUS</th><th>AMOUNT</th></tr></thead>"
         f"<tbody>{render_rows()}</tbody></table></div></section></div>"
         f"<div id='security'>{security_card(user, state, show_simulation=True)}</div></div>"
+        f"{audit_card(events)}"
         "<div class='footer'>NOVABANK DEMO · FAKE DATA ONLY · NO REAL TRANSACTIONS ARE SENT</div></main></div>"
     )
     return page(content)
 
 
-def hr_dashboard(user, email, roles, state):
+def hr_dashboard(user, email, roles, state, events):
     initials = escape((user[:1] or "U").upper())
     content = (
         "<div class='shell'><aside class='side'><div class='brand'><span class='brand-mark'>N</span>NOVABANK</div>"
@@ -191,6 +249,7 @@ def hr_dashboard(user, email, roles, state):
         "<div class='grid overview'><section class='card' id='people'><div class='section-head'><h2>People resources</h2><span class='pill'>Sample content</span></div>"
         "<p>Employee directory</p><p>Leave requests</p><p>Payroll calendar</p></section>"
         f"<div id='security'>{security_card(user, state)}</div></div>"
+        f"{audit_card(events)}"
         "<div class='footer'>NOVABANK DEMO · FAKE DATA ONLY · NO REAL EMPLOYEE RECORDS</div></main></div>"
     )
     return page(content)
@@ -230,17 +289,25 @@ class Handler(BaseHTTPRequestHandler):
         )
         self.send_html(status, document)
 
-    def deny(self, score, *, transfer=False):
+    def deny(self, user, score, *, transfer=False):
         print(f"[{APP_NAME}] DENY user={self.identity()[0]!r} resource={APP_RESOURCE!r} score={score}", flush=True)
+        try:
+            events = audit_events(user)
+        except (URLError, TimeoutError, ValueError, json.JSONDecodeError):
+            events = []
+        reason = "Policy requirements were not met"
+        if events and events[0].get("decision") == "deny":
+            reason = events[0].get("reason", reason)
         if transfer:
             title = "Transfer blocked"
-            message = (f"OPA denied this transfer because the current trust score is {score}/100. "
+            message = (f"OPA denied this transfer: {reason}. Current trust score: {score}/100. "
                        "No balance or transaction record was changed.")
         else:
             title = "Access paused by ZeroGate"
-            message = (f"Current trust score: {score}/100. OPA needs the correct role and a score of at least 60. "
-                       "The next request was denied.")
-        extra = "<p><a class='btn btn-outline' href='/oauth2/sign_out'>Sign out</a></p>"
+            message = (f"OPA denied this request: {reason}. Current trust score: {score}/100. "
+                       "The request was blocked.")
+        log_panel = audit_card(events) if events else ""
+        extra = log_panel + "<p><a class='btn btn-outline' href='/oauth2/sign_out'>Sign out</a></p>"
         document, status = result_page(title, escape(message), status=403, kind="deny", extra=extra)
         self.send_html(status, document)
 
@@ -252,17 +319,18 @@ class Handler(BaseHTTPRequestHandler):
         try:
             state = risk_state(user)
             allowed = policy_allows(user, roles, "read", state["score"])
+            events = audit_events(user)
         except (URLError, TimeoutError, ValueError, json.JSONDecodeError) as error:
             self.service_error(error)
             return
         if not allowed:
-            self.deny(state["score"])
+            self.deny(user, state["score"])
             return
         print(f"[{APP_NAME}] ALLOW user={user!r} roles={roles!r} score={state['score']}", flush=True)
         if APP_RESOURCE == "finance":
-            document = finance_dashboard(user, email, roles, state)
+            document = finance_dashboard(user, email, roles, state, events)
         else:
-            document = hr_dashboard(user, email, roles, state)
+            document = hr_dashboard(user, email, roles, state, events)
         self.send_html(200, document)
 
     def do_POST(self):
@@ -276,7 +344,7 @@ class Handler(BaseHTTPRequestHandler):
             state = risk_state(user)
             action = "transfer" if path == "/transfer" else "simulate_device_issue"
             if not policy_allows(user, roles, action, state["score"]):
-                self.deny(state["score"], transfer=path == "/transfer")
+                self.deny(user, state["score"], transfer=path == "/transfer")
                 return
 
             if path == "/simulate-device-issue":

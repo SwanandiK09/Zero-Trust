@@ -15,6 +15,9 @@ networks:
   finance-net:        # Finance zone: no internet, only reachable via the Finance proxy
     internal: true
 
+volumes:
+  audit-data:
+
 services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -46,11 +49,13 @@ services:
       - hr-net
       - finance-net
 
-  # Small in-memory risk score service for the local demo.
-  # It is reachable only by the protected apps on their internal networks.
+  # Demo risk scores are in memory; the decision audit database persists in a volume.
+  # This service is reachable only by the protected apps on their internal networks.
   risk-engine:
     build: ./risk-engine
     restart: unless-stopped
+    volumes:
+      - audit-data:/data
     networks:
       - hr-net
       - finance-net

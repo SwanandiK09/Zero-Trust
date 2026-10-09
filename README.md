@@ -69,7 +69,9 @@ OPA is not published as a host port. To inspect its decision API from an app con
 
 ## Phase 3: interactive risk and payment demo
 
-The Finance app is a fake banking dashboard with a balance, recent activity, a transfer form, and a device security panel. Transfers update an in-memory demo ledger only; no real payment is sent. Before each page view or transfer, the app asks OPA using the user's Keycloak roles and the current score from the risk service. OPA allows the action only when the user has the Finance role and the score is at least 60.
+The Finance app is a fake banking dashboard with a balance, recent activity, a transfer form, a device security panel, and a recent access-decision table. Transfers update an in-memory demo ledger only; no real payment is sent. Before each page view or transfer, the app asks OPA using the user's Keycloak roles and the current score from the risk service. OPA allows the action only when the user has the Finance role, the action is allowed for that resource, and the score is at least 60.
+
+Each OPA decision is written to a SQLite audit database by the risk service. The Finance and HR pages show the signed-in user's latest decisions, including timestamp, action, resource, score, outcome, and a short reason. If the audit write fails, the app fails closed and does not perform the protected action. The audit database uses a Docker volume and survives service restarts; the demo risk scores and Finance ledger remain in memory and reset when their services restart.
 
 To demo the effect:
 
@@ -83,13 +85,13 @@ To demo the effect:
 3. Make a small mock transfer. The app checks the request with OPA, reduces the demo balance, and adds it to Recent activity.
 4. In the security panel, submit **Simulate firewall being disabled**. The risk service records the device as non-compliant and lowers Rahul's score to `20/100`.
 5. On the result page, enter another mock transfer and submit it. OPA denies the transfer because the score is below 60; the balance and activity list stay unchanged.
-6. To reset the risk score and fake ledger for another run, use:
+6. The dashboard and denied page show the recent audit trail for the signed-in user. To reset the risk score and fake ledger for another run, use:
 
    ```sh
    docker compose restart risk-engine finance-app
    ```
 
-The risk score and ledger are stored in memory for this local demo. Restarting those two services resets the demo data without resetting Keycloak or MFA. Avoid `docker compose down` for ordinary restarts.
+Restarting those two services resets the risk score and ledger without resetting Keycloak, MFA, or the audit history. Avoid `docker compose down -v` unless you intend to remove persistent Docker data.
 
 ## Check isolation
 ```
@@ -118,11 +120,16 @@ This demonstrates two zero trust properties: **no implicit trust from
 being on the corporate network** and **micro-segmentation**. Only run
 this against your own lab.
 
+## Evaluation notes
+
+Use [the attack comparison runbook](docs/attack-comparison.md) to perform and record the allowed-user, wrong-role, outsider, and unsafe-device scenarios. Record actual outcomes and add your own screenshots; the expected results in the runbook are not a substitute for measured results. See [known limitations](docs/limitations.md) before presenting the scope.
+
 ## Roadmap
 - [x] Phase 1: Keycloak, MFA, role-based access, isolated networks
 - [x] Phase 1b: attacker container (no-session + segmentation demo)
 - [x] Phase 2: OPA policy engine (default deny, Rego rules, app asks OPA on each request)
 - [x] Phase 3: simulated unsafe-device signal + in-memory trust score + OPA re-check on the next request
+- [x] Phase 3b: persistent SQLite policy-decision audit trail shown in the app
 - [ ] Phase 4: phishing simulation (GoPhish), mTLS, and logging dashboard
 - [ ] Phase 5: attack demos (flat network vs zero trust) and report
 
