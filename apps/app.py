@@ -45,13 +45,14 @@ def risk_state(user):
     return result
 
 
-def policy_allows(user, roles, action, score):
+def policy_allows(user, roles, action, score, device_id="unknown"):
     result = api_json(OPA_URL, {
         "input": {
             "user": {"name": user, "roles": roles},
             "resource": APP_RESOURCE,
             "action": action,
             "trust_score": score,
+            "device": {"id": device_id},
         }
     })
     allowed = result.get("result") is True
@@ -65,6 +66,7 @@ def policy_allows(user, roles, action, score):
         reason = "Action is not permitted for this resource"
     api_json(f"{RISK_URL}/audit", {
         "user": user,
+        "device_id": device_id,
         "roles": roles,
         "resource": APP_RESOURCE,
         "action": action,
@@ -73,10 +75,6 @@ def policy_allows(user, roles, action, score):
         "reason": reason,
     })
     return allowed
-
-
-def signal_device_unsafe(user):
-    return api_json(f"{RISK_URL}/signal", {"user": user, "event": "device_unsafe"})
 
 
 def audit_events(user, limit=8):
@@ -145,7 +143,7 @@ def render_rows():
 
 def render_audit(events):
     if not events:
-        return "<tr><td colspan='5'>No policy decisions recorded yet.</td></tr>"
+        return "<tr><td colspan='6'>No policy decisions recorded yet.</td></tr>"
     rows = []
     for event in events:
         decision = str(event.get("decision", "unknown"))
@@ -156,6 +154,7 @@ def render_audit(events):
             f"<td><strong>{escape(str(event.get('action', '')))}</strong>"
             f"<span class='audit-reason'>{escape(str(event.get('reason', '')))}</span></td>"
             f"<td>{escape(str(event.get('resource', '')))}</td>"
+            f"<td>{escape(str(event.get('device_id', 'unknown')))}</td>"
             f"<td>{escape(str(event.get('trust_score', '')))} / 100</td>"
             f"<td><span class='decision decision-{safe_decision}'>{escape(decision.upper())}</span></td>"
             "</tr>"
@@ -168,32 +167,31 @@ def audit_card(events):
         "<section class='card lower' id='security-log'><div class='section-head'>"
         "<h2>Recent access decisions</h2><span class='pill'>AUDIT TRAIL</span></div>"
         "<div class='table-wrap'><table><thead><tr><th>TIME (UTC)</th><th>ACTION / REASON</th>"
-        "<th>RESOURCE</th><th>RISK SCORE</th><th>DECISION</th></tr></thead>"
+        "<th>RESOURCE</th><th>DEVICE</th><th>RISK SCORE</th><th>DECISION</th></tr></thead>"
         f"<tbody>{render_audit(events)}</tbody></table></div>"
-        "<p class='transfer-note'>Showing your latest policy decisions and simulated device signals.</p></section>"
+        "<p class='transfer-note'>Showing your latest policy decisions and device posture reports.</p></section>"
     )
 
 
-def security_card(user, state, show_simulation=False):
+def security_card(user, state):
     score = state["score"]
     compliant = state.get("device_compliant", True)
-    status = "DEVICE COMPLIANT" if compliant else "DEVICE FLAGGED"
+    device_id = state.get("device_id", "Not enrolled")
+    enrolled = device_id != "Not enrolled"
+    status = "FIREWALL VERIFIED" if compliant and enrolled else "POSTURE NOT VERIFIED" if not enrolled else "DEVICE FLAGGED"
     status_cls = "status" if compliant else "status flagged"
     event = state.get("last_event", "No risk signals recorded")
-    simulation = (
-        "<form method='post' action='/simulate-device-issue'>"
-        "<button class='btn btn-risk' type='submit'>Simulate firewall being disabled</button></form>"
-        "<p class='transfer-note'>This changes the device status and stored score used in the next policy decision.</p>"
-        if show_simulation else ""
-    )
+    posture_command = escape(f"powershell -ExecutionPolicy Bypass -File .\\posture-agent\\report.ps1 -User {user}")
     return (
         "<section class='card security'><div class='section-head'><h2>Access security</h2><span class='pill'>LIVE POLICY</span></div>"
         f"<div class='score-row'><span class='score'>{score}<span style='font-size:13px;color:#74817b'> / 100</span></span>"
         f"<span class='{status_cls}'>{status}</span></div>"
         f"<div class='bar'><span style='width:{score}%'></span></div>"
-        f"<p class='device'>Signed in as <strong>{escape(user)}</strong>. Device signal: {escape('firewall active' if compliant else 'firewall disabled')}.</p>"
+        f"<p class='device'>Signed in as <strong>{escape(user)}</strong>. Device: <strong>{escape(str(device_id))}</strong>. "
+        f"Firewall: {escape('enabled' if compliant else 'disabled or not reported')}.</p>"
         f"<div class='event'>LATEST SIGNAL<br><strong>{escape(event)}</strong></div>"
-        f"{simulation}</section>"
+        f"<p class='transfer-note'>To submit a Windows firewall check, run this in PowerShell from the project folder:<br><code>{posture_command}</code></p>"
+        "<p class='transfer-note'>The report reads firewall state; it does not change your firewall.</p></section>"
     )
 
 
@@ -224,7 +222,7 @@ def finance_dashboard(user, email, roles, state, events):
         "<section class='card' id='activity'><div class='section-head'><h2>Recent activity</h2><a href='#activity'>View all</a></div>"
         "<div class='table-wrap'><table><thead><tr><th>DESCRIPTION</th><th>DATE</th><th>STATUS</th><th>AMOUNT</th></tr></thead>"
         f"<tbody>{render_rows()}</tbody></table></div></section></div>"
-        f"<div id='security'>{security_card(user, state, show_simulation=True)}</div></div>"
+        f"<div id='security'>{security_card(user, state)}</div></div>"
         f"{audit_card(events)}"
         "<div class='footer'>NOVABANK DEMO · FAKE DATA ONLY · NO REAL TRANSACTIONS ARE SENT</div></main></div>"
     )
@@ -289,7 +287,7 @@ class Handler(BaseHTTPRequestHandler):
         )
         self.send_html(status, document)
 
-    def deny(self, user, score, *, transfer=False):
+    def deny(self, user, score, *, transfer=False, device_id="Not enrolled"):
         print(f"[{APP_NAME}] DENY user={self.identity()[0]!r} resource={APP_RESOURCE!r} score={score}", flush=True)
         try:
             events = audit_events(user)
@@ -306,6 +304,8 @@ class Handler(BaseHTTPRequestHandler):
             title = "Access paused by ZeroGate"
             message = (f"OPA denied this request: {reason}. Current trust score: {score}/100. "
                        "The request was blocked.")
+        if device_id == "Not enrolled":
+            message += " Run the posture-agent command shown in the security panel, then reload."
         log_panel = audit_card(events) if events else ""
         extra = log_panel + "<p><a class='btn btn-outline' href='/oauth2/sign_out'>Sign out</a></p>"
         document, status = result_page(title, escape(message), status=403, kind="deny", extra=extra)
@@ -318,13 +318,14 @@ class Handler(BaseHTTPRequestHandler):
         user, email, roles = self.identity()
         try:
             state = risk_state(user)
-            allowed = policy_allows(user, roles, "read", state["score"])
+            device_id = state.get("device_id", "Not enrolled")
+            allowed = policy_allows(user, roles, "read", state["score"], device_id)
             events = audit_events(user)
         except (URLError, TimeoutError, ValueError, json.JSONDecodeError) as error:
             self.service_error(error)
             return
         if not allowed:
-            self.deny(user, state["score"])
+            self.deny(user, state["score"], device_id=state.get("device_id", "Not enrolled"))
             return
         print(f"[{APP_NAME}] ALLOW user={user!r} roles={roles!r} score={state['score']}", flush=True)
         if APP_RESOURCE == "finance":
@@ -336,33 +337,15 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         global balance
         path = urlparse(self.path).path
-        if path not in ("/transfer", "/simulate-device-issue"):
+        if path != "/transfer":
             self.send_error(404)
             return
         user, _, roles = self.identity()
         try:
             state = risk_state(user)
-            action = "transfer" if path == "/transfer" else "simulate_device_issue"
-            if not policy_allows(user, roles, action, state["score"]):
-                self.deny(user, state["score"], transfer=path == "/transfer")
-                return
-
-            if path == "/simulate-device-issue":
-                changed = signal_device_unsafe(user)
-                score = changed.get("score", 0)
-                extra = (
-                    "<div class='alert'><strong>Device posture changed:</strong> the demo firewall is now marked off. "
-                    f"Your score is {score}/100. This signal is stored by the risk service.</div>"
-                    "<h2>Now try a transfer</h2>"
-                    f"{transfer_form('Attempt transfer while device is unsafe')}"
-                )
-                document, status = result_page(
-                    "Device signal recorded",
-                    "This was a simulated device event. You are still signed in; the next action will be checked with the new score.",
-                    extra=extra,
-                )
-                print(f"[{APP_NAME}] SIGNAL user={user!r} device_unsafe score={score}", flush=True)
-                self.send_html(status, document)
+            device_id = state.get("device_id", "Not enrolled")
+            if not policy_allows(user, roles, "transfer", state["score"], device_id):
+                self.deny(user, state["score"], transfer=True, device_id=device_id)
                 return
 
             length = int(self.headers.get("Content-Length", "0"))

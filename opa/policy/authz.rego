@@ -21,5 +21,5 @@ valid_action if input.action == "read"
 
 valid_action if {
     input.resource == "finance"
-    input.action in {"transfer", "simulate_device_issue"}
+    input.action == "transfer"
 }

@@ -14,6 +14,7 @@ networks:
     internal: true
   finance-net:        # Finance zone: no internet, only reachable via the Finance proxy
     internal: true
+  posture-net:        # Local host bridge for the Windows posture agent -> risk service
 
 volumes:
   audit-data:
@@ -54,11 +55,16 @@ services:
   risk-engine:
     build: ./risk-engine
     restart: unless-stopped
+    environment:
+      POSTURE_SHARED_SECRET: ${POSTURE_SHARED_SECRET:-lab-only-change-me}
     volumes:
       - audit-data:/data
+    ports:
+      - "127.0.0.1:8090:8090"
     networks:
       - hr-net
       - finance-net
+      - posture-net
 
   # ---------- HR zone ----------
   hr-app:

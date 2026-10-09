@@ -1,7 +1,7 @@
 # Known limitations
 
-- The firewall event is a button-driven simulation. The lab does not inspect a real endpoint's firewall, antivirus, encryption, or patch level.
-- The risk score is kept in memory and is keyed by username, not a cryptographically identified device. Restarting `risk-engine` resets scores.
+- The Windows posture script reads the three local Windows Firewall profile states. It does not inspect antivirus, encryption, patch level, or prove that the report came from a hardware-backed device. The optional negative-test flag sends an explicitly synthetic firewall-off value; it does not alter the host firewall.
+- The risk score is kept in memory and is keyed by username, not a cryptographically identified device. Restarting `risk-engine` resets scores. The local agent and service share a lab HMAC secret, not a per-device certificate.
 - The fake Finance balance and transaction list are in memory and reset when `finance-app` restarts. No real payment is sent.
 - The audit history is SQLite-backed and persists in the `audit-data` Docker volume. The app displays only the signed-in user's latest events.
 - The attacker demo has no authenticated session. It demonstrates authentication gates and network isolation, not phishing, stolen-token replay, or MFA bypass.

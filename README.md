@@ -35,7 +35,7 @@ Zero trust ideas already in place:
    ```
    docker compose up -d --build
    ```
-   Wait about 60 seconds for Keycloak to start. Proxies restart on their own until Keycloak is ready. OPA starts with the stack and is only reachable by the protected apps.
+   Wait about 60 seconds for Keycloak to start. Proxies restart on their own until Keycloak is ready. OPA starts with the stack and is only reachable by the protected apps. The risk service's posture endpoint is published only on `127.0.0.1:8090` for the local Windows agent; its separate bridge does not join the HR or Finance app networks.
 
 ## Try it
 
@@ -67,9 +67,9 @@ opa test -v opa/policy
 
 OPA is not published as a host port. To inspect its decision API from an app container, use `http://opa:8181/v1/data/zerogate/authz/allow` with a JSON request containing an `input` object.
 
-## Phase 3: interactive risk and payment demo
+## Phase 3: endpoint firewall posture and payment demo
 
-The Finance app is a fake banking dashboard with a balance, recent activity, a transfer form, a device security panel, and a recent access-decision table. Transfers update an in-memory demo ledger only; no real payment is sent. Before each page view or transfer, the app asks OPA using the user's Keycloak roles and the current score from the risk service. OPA allows the action only when the user has the Finance role, the action is allowed for that resource, and the score is at least 60.
+The Finance app is a fake banking dashboard with a balance, recent activity, a transfer form, a device security panel, and a recent access-decision table. Transfers update an in-memory demo ledger only; no real payment is sent. Before each page view or transfer, the app asks OPA using the user's Keycloak roles and the current score from the risk service. OPA allows the action only when the user has the Finance role, the action is allowed for that resource, and the score is at least 60. A small Windows PowerShell posture agent reads the actual status of all three Windows Firewall profiles and sends a signed report to the local risk service. Until it reports, access is denied (score 20); a healthy report sets the score to 100, while any disabled profile sets it to 20.
 
 Each OPA decision is written to a SQLite audit database by the risk service. The Finance and HR pages show the signed-in user's latest decisions, including timestamp, action, resource, score, outcome, and a short reason. If the audit write fails, the app fails closed and does not perform the protected action. The audit database uses a Docker volume and survives service restarts; the demo risk scores and Finance ledger remain in memory and reset when their services restart.
 
@@ -81,11 +81,11 @@ To demo the effect:
    docker compose up -d --build
    ```
 
-2. Sign in as `rahul` at the Finance app. The dashboard should show a score of `100/100` and a demo balance.
-3. Make a small mock transfer. The app checks the request with OPA, reduces the demo balance, and adds it to Recent activity.
-4. In the security panel, submit **Simulate firewall being disabled**. The risk service records the device as non-compliant and lowers Rahul's score to `20/100`.
-5. On the result page, enter another mock transfer and submit it. OPA denies the transfer because the score is below 60; the balance and activity list stay unchanged.
-6. The dashboard and denied page show the recent audit trail for the signed-in user. To reset the risk score and fake ledger for another run, use:
+2. Sign in as `rahul` at Finance. Before reporting posture, the app should deny access because the device has not been verified.
+3. In a separate PowerShell window, from this project folder run `powershell -ExecutionPolicy Bypass -File .\posture-agent\report.ps1 -User rahul`. The script checks Windows Firewall and reports the computer name. It does not change firewall settings. Reload Finance; with all firewall profiles enabled, the score should be `100/100`.
+4. Make a small mock transfer. OPA checks the role and current score, then the app updates its fake balance and activity.
+5. For a safe negative test, run `powershell -ExecutionPolicy Bypass -File .\posture-agent\report.ps1 -User rahul -SimulateFirewallDisabled`. This sends a clearly marked synthetic disabled signal without changing the real firewall. Reload Finance and try a transfer: OPA should deny it at score `20/100`, with no ledger change.
+6. Run the script again without `-SimulateFirewallDisabled` to report the real state and restore the score. The dashboard and denied page show the audit trail. To reset the in-memory risk score and fake ledger for another run, use:
 
    ```sh
    docker compose restart risk-engine finance-app
@@ -128,7 +128,7 @@ Use [the attack comparison runbook](docs/attack-comparison.md) to perform and re
 - [x] Phase 1: Keycloak, MFA, role-based access, isolated networks
 - [x] Phase 1b: attacker container (no-session + segmentation demo)
 - [x] Phase 2: OPA policy engine (default deny, Rego rules, app asks OPA on each request)
-- [x] Phase 3: simulated unsafe-device signal + in-memory trust score + OPA re-check on the next request
+- [x] Phase 3: Windows Firewall posture report + in-memory risk score + OPA re-check on the next request
 - [x] Phase 3b: persistent SQLite policy-decision audit trail shown in the app
 - [ ] Phase 4: phishing simulation (GoPhish), mTLS, and logging dashboard
 - [ ] Phase 5: attack demos (flat network vs zero trust) and report

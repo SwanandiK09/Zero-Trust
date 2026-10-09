@@ -46,11 +46,3 @@ test_finance_transfer_denied_when_risk_is_high if {
 test_hr_cannot_make_finance_transfer if {
     not authz.allow with input as {"user": {"roles": ["hr"]}, "resource": "finance", "action": "transfer", "trust_score": 100}
 }
-
-test_finance_user_can_run_demo_device_signal if {
-    authz.allow with input as {"user": {"roles": ["finance"]}, "resource": "finance", "action": "simulate_device_issue", "trust_score": 100}
-}
-
-test_hr_user_cannot_run_finance_device_simulation if {
-    not authz.allow with input as {"user": {"roles": ["hr"]}, "resource": "hr", "action": "simulate_device_issue", "trust_score": 100}
-}
