@@ -1,0 +1,23 @@
+﻿# Private keys and certificate bundles
+**/private/
+**/*.key
+**/*.pfx
+**/*.p12
+
+# Local certificate files
+**/pki/generated/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+
+# Local data and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log

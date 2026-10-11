@@ -1,0 +1,18 @@
+{
+	auto_https off
+	admin off
+}
+
+:8443 {
+	tls /pki/server.crt /pki/server.key {
+		client_auth {
+			mode require_and_verify
+			trust_pool file /pki/ca.crt
+		}
+	}
+
+	reverse_proxy hr-proxy:4180 {
+		header_up X-ZeroGate-Cert-Verified true
+		header_up X-ZeroGate-Device-ID {tls_client_fingerprint}
+	}
+}
