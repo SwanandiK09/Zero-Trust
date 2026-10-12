@@ -1,8 +1,9 @@
+
 package zerogate.authz
 
 import rego.v1
 
-# A request is denied unless a rule below explicitly allows it.
+# Deny access unless explicitly allowed.
 default allow := false
 
 resource_roles := {

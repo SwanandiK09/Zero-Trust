@@ -1,3 +1,4 @@
+
 package zerogate.authz_test
 
 import rego.v1

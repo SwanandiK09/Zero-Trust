@@ -7,7 +7,7 @@
 5. **Architecture and policy** — include `architecture.md`, the Docker network zones, and key OPA rules.
 6. **Implementation** — describe Keycloak MFA, the sign-in proxies, OPA, the risk service, the audit trail, and the fake Finance action.
 7. **Evaluation** — run every case in `attack-comparison.md`, report observed results, and include screenshots of the app and attacker output.
-8. **Limitations** — use `limitations.md`; distinguish real Windows firewall reads from the safe synthetic negative test, and explain that device keys are not TPM-backed and tokens are not certificate-bound.
-9. **Conclusion and next steps** — summarize the results and propose TPM-backed keys, certificate revocation, broader posture checks, or phishing-signal integration as future work.
+8. **Limitations** — use `limitations.md`; be clear that firewall state is simulated, and device certificates and stolen-token replay are not implemented.
+9. **Conclusion and next steps** — summarize the results and propose hardware-backed device certificates, broader posture checks, or phishing-signal integration as future work.
 
 Do not fill the results table with expected outcomes. Record what actually happened in your lab.
